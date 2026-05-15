@@ -44,7 +44,7 @@ const upload = multer({
 router.post("/", protect, upload.single("pdf"), createProject);
 router.get("/", protect, getProjects);
 router.patch("/:projectId/status", protect, authorizeRole("admin"), updateProjectStatus);
-router.post("/:projectId/extension", protect, requestExtension);
+router.post("/:projectId/extension", protect, authorizeRole("admin"), requestExtension);
 router.patch("/:projectId/extension", protect, respondToExtension);
 
 export default router;

@@ -3,10 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import axiosInstance from "../../../lib/axios";
+import { useAuth } from "../../../lib/useAuth";
 import Link from "next/link";
 
 export default function SubmitProject() {
   const router = useRouter();
+  const { loading: authLoading } = useAuth("user");
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -16,6 +18,8 @@ export default function SubmitProject() {
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  if (authLoading) return <div className="flex min-h-[60vh] items-center justify-center"><div className="w-8 h-8 border-4 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin"></div></div>;
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });

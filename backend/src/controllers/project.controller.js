@@ -1,4 +1,5 @@
 import Project from "../models/project.model.js";
+import User from "../models/user.model.js";
 
 export const createProject = async (req, res) => {
   try {
@@ -56,11 +57,21 @@ export const updateProjectStatus = async (req, res) => {
     const project = await Project.findById(projectId);
     if (!project) return res.status(404).json({ message: "Project not found" });
 
+    const wasAlreadyCompleted = project.status === "completed";
+
     project.status = status;
     if (status === "active" && memberPercentage !== undefined) {
       project.memberPercentage = Number(memberPercentage);
     }
     await project.save();
+
+    // Credit the member's balance when a project is marked completed (only once)
+    if (status === "completed" && !wasAlreadyCompleted) {
+      const earned = project.revenue * (project.memberPercentage / 100);
+      await User.findByIdAndUpdate(project.createdBy, {
+        $inc: { balance: earned },
+      });
+    }
 
     res.status(200).json({ message: `Project status updated to ${status}`, project });
   } catch (error) {
@@ -77,15 +88,16 @@ export const requestExtension = async (req, res) => {
     const project = await Project.findById(projectId);
     if (!project) return res.status(404).json({ message: "Project not found" });
 
-    // Only admin can request extensions now
+    // Only admin can request extensions
     if (req.user.role !== "admin") {
       return res.status(403).json({ message: "Only admins can request extensions" });
     }
 
+    // Allow re-requesting even if a previous one was rejected
     project.extensionRequest = {
       date: new Date(date),
       reason,
-      status: "pending"
+      status: "pending",
     };
 
     await project.save();

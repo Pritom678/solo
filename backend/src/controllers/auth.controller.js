@@ -1,25 +1,22 @@
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
 import { generateToken } from "../lib/utils.js";
 import User from "../models/user.model.js";
-import { ENV } from "../lib/env.js";
+import { z } from "zod";
 
-export const signup = async (req, res) => {
-  const { fullName, email, password } = req.body;
+const signupSchema = z.object({
+  fullName: z.string().min(2, "Full name must be at least 2 characters"),
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+});
 
+export const signup = async (req, res, next) => {
   try {
-    if (!fullName || !email || !password) {
-      return res.status(400).send({ message: "All Fields Required" });
+    const parsed = signupSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.errors[0].message });
     }
-    if (password.length < 6) {
-      return res
-        .status(400)
-        .send({ message: "Password must 6 characters or long" });
-    }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return res.status(400).send({ message: "Invalid Email" });
-    }
+    const { fullName, email, password } = parsed.data;
+
     const userExists = await User.findOne({ email });
 
     if (userExists) {
@@ -57,10 +54,18 @@ export const signup = async (req, res) => {
   }
 };
 
-export const login = async (req, res) => {
-  const { email, password } = req.body;
+const loginSchema = z.object({
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(1, "Password is required"),
+});
 
+export const login = async (req, res, next) => {
   try {
+    const parsed = loginSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.errors[0].message });
+    }
+    const { email, password } = parsed.data;
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(400).send({ message: "Invalid Credentials" });
@@ -70,6 +75,9 @@ export const login = async (req, res) => {
       return res.status(400).send({ message: "Invalid Credentials" });
     }
     
+    if (user.status === "pending") {
+      return res.status(403).send({ message: "Your account is pending admin approval." });
+    }
     if (user.status === "rejected") {
       return res.status(403).send({ message: "Your account has been rejected." });
     }
@@ -96,20 +104,7 @@ export const logout = async (req, res) => {
 
 export const getMe = async (req, res) => {
   try {
-    const token = req.cookies?.jwt;
-
-    if (!token) {
-      return res.status(401).json({ message: "Not authenticated" });
-    }
-
-    const decoded = jwt.verify(token, ENV.JWT_SECRET);
-
-    const user = await User.findById(decoded.userId).select("-password");
-
-    if (!user) {
-      return res.status(401).json({ message: "User not found" });
-    }
-
+    const user = req.user;
     res.status(200).json({
       _id: user._id,
       fullName: user.fullName,
@@ -120,6 +115,6 @@ export const getMe = async (req, res) => {
     });
   } catch (err) {
     console.error("getMe Error:", err);
-    return res.status(401).json({ message: "Invalid token" });
+    return res.status(500).json({ message: "Internal Server Error" });
   }
 };
