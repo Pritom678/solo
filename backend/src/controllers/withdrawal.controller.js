@@ -100,7 +100,55 @@ export const approveWithdrawal = async (req, res) => {
   }
 };
 
-// ── Admin: reject a withdrawal (refund balance) ───────────────────────────────
+// ── Admin: instant self-withdrawal (no approval needed) ──────────────────────
+
+export const adminSelfWithdraw = async (req, res) => {
+  try {
+    const { amount, note } = req.body;
+    const parsedAmount = Number(amount);
+
+    if (!parsedAmount || parsedAmount <= 0) {
+      return res.status(400).json({ message: "Amount must be greater than 0." });
+    }
+
+    const admin = await User.findById(req.user._id);
+    if (!admin) return res.status(404).json({ message: "User not found." });
+
+    if (admin.balance < parsedAmount) {
+      return res.status(400).json({
+        message: `Insufficient balance. Your current balance is $${admin.balance.toFixed(2)}.`,
+      });
+    }
+
+    // Deduct and immediately mark as approved — no pending state
+    admin.balance -= parsedAmount;
+    await admin.save();
+
+    const withdrawal = await Withdrawal.create({
+      user: admin._id,
+      amount: parsedAmount,
+      note: note || "",
+      status: "approved",
+    });
+
+    res.status(201).json({ message: "Withdrawal recorded.", withdrawal, balance: admin.balance });
+  } catch (error) {
+    console.error("Admin self-withdraw error:", error);
+    res.status(500).json({ message: "Server error." });
+  }
+};
+
+// ── Admin: get own withdrawal history ────────────────────────────────────────
+
+export const getAdminWithdrawals = async (req, res) => {
+  try {
+    const withdrawals = await Withdrawal.find({ user: req.user._id }).sort({ createdAt: -1 });
+    res.status(200).json({ withdrawals });
+  } catch (error) {
+    console.error("Get admin withdrawals error:", error);
+    res.status(500).json({ message: "Server error." });
+  }
+};
 
 export const rejectWithdrawal = async (req, res) => {
   try {

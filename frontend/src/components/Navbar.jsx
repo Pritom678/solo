@@ -12,13 +12,13 @@ export default function Navbar() {
 
   useEffect(() => {
     checkUser();
-  }, [pathname]); // Re-check user status when route changes
+  }, [pathname]);
 
   const checkUser = async () => {
     try {
       const res = await axiosInstance.get("/api/auth/me");
       setUser(res.data);
-    } catch (err) {
+    } catch {
       setUser(null);
     }
   };
@@ -33,34 +33,77 @@ export default function Navbar() {
     }
   };
 
-  return (
-    <nav className="glass-panel mx-8 mt-6 mb-4 px-6 py-4 flex items-center justify-between z-50 rounded-2xl sticky top-6">
-      <div className="flex-1">
-        <Link href="/" className="text-2xl font-black tracking-tighter text-emerald-gradient">
-          SOLO.
-        </Link>
-      </div>
-      <div className="flex-none gap-4 items-center flex">
-        {user ? (
-          <>
-            <Link href="/dashboard" className="text-sm font-medium text-gray-300 hover:text-emerald-400 transition-colors">Dashboard</Link>
-            {user.role === "admin" && (
-              <Link href="/admin" className="text-sm font-medium text-gray-300 hover:text-emerald-400 transition-colors">Admin</Link>
-            )}
-            <div className="h-4 w-px bg-gray-800 mx-2"></div>
-            <div className="flex flex-col items-end mr-2">
-              <span className="text-sm text-emerald-400 font-bold">{user.fullName}</span>
-              <span className="text-[10px] text-gray-500 uppercase tracking-wider">{user.role}</span>
-            </div>
-            <button onClick={handleLogout} className="btn-outline-emerald text-xs py-1.5 px-3">Sign Out</button>
-          </>
-        ) : (
-          <>
-            <Link href="/login" className="text-sm font-medium text-gray-300 hover:text-emerald-400 transition-colors">Log In</Link>
-            <Link href="/signup" className="btn-emerald text-sm py-2 px-4 shadow-[0_0_15px_rgba(16,185,129,0.3)]">Sign Up</Link>
-          </>
+  const navLink = (href, label) => {
+    const active = pathname === href || pathname.startsWith(href + "/");
+    return (
+      <Link
+        href={href}
+        className={`relative text-xs font-semibold tracking-widest uppercase transition-colors px-1 py-0.5 ${
+          active ? "text-emerald-400" : "text-slate-400 hover:text-slate-200"
+        }`}
+      >
+        {label}
+        {active && (
+          <span className="absolute -bottom-1 left-0 right-0 h-px bg-emerald-400 rounded-full" />
         )}
-      </div>
-    </nav>
+      </Link>
+    );
+  };
+
+  return (
+    <header className="sticky top-0 z-50 px-6 md:px-8 pt-4 pb-2">
+      <nav className="glass-panel px-5 py-3 flex items-center justify-between">
+
+        {/* Logo */}
+        <Link href="/" className="flex items-center gap-2 group">
+          <div className="w-6 h-6 rounded border border-emerald-500/40 bg-emerald-500/10 flex items-center justify-center">
+            <span className="text-emerald-400 text-[10px] font-black font-mono">S</span>
+          </div>
+          <span className="text-sm font-black tracking-[0.15em] uppercase text-white group-hover:text-emerald-400 transition-colors font-mono">
+            SOLO
+          </span>
+          <span className="text-emerald-500/50 text-xs font-mono hidden sm:inline">v2</span>
+        </Link>
+
+        {/* Nav links + user */}
+        <div className="flex items-center gap-5">
+          {user ? (
+            <>
+              {navLink("/dashboard", "Dashboard")}
+              {user.role === "admin" && navLink("/admin", "Admin")}
+
+              <div className="w-px h-4 bg-slate-700 mx-1" />
+
+              {/* User chip */}
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center text-emerald-400 text-[10px] font-black font-mono">
+                  {user.fullName.charAt(0).toUpperCase()}
+                </div>
+                <div className="hidden sm:flex flex-col leading-none">
+                  <span className="text-xs text-white font-semibold">{user.fullName}</span>
+                  <span className="text-[9px] text-emerald-500/70 uppercase tracking-widest font-mono">{user.role}</span>
+                </div>
+              </div>
+
+              <button
+                onClick={handleLogout}
+                className="text-[10px] font-bold tracking-widest uppercase text-slate-500 hover:text-red-400 transition-colors border border-slate-700 hover:border-red-500/40 rounded px-2.5 py-1.5"
+              >
+                Exit
+              </button>
+            </>
+          ) : (
+            <>
+              <Link href="/login" className="text-xs font-semibold tracking-widest uppercase text-slate-400 hover:text-slate-200 transition-colors">
+                Sign In
+              </Link>
+              <Link href="/signup" className="btn-emerald text-[10px] py-2 px-4">
+                Get Access
+              </Link>
+            </>
+          )}
+        </div>
+      </nav>
+    </header>
   );
 }

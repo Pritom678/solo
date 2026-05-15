@@ -7,6 +7,8 @@ import {
   getAllWithdrawals,
   approveWithdrawal,
   rejectWithdrawal,
+  adminSelfWithdraw,
+  getAdminWithdrawals,
 } from "../controllers/withdrawal.controller.js";
 
 const router = express.Router();
@@ -19,5 +21,7 @@ router.get("/mine", protect, getMyWithdrawals);
 router.get("/", protect, authorizeRole("admin"), getAllWithdrawals);
 router.patch("/:withdrawalId/approve", protect, authorizeRole("admin"), approveWithdrawal);
 router.patch("/:withdrawalId/reject", protect, authorizeRole("admin"), rejectWithdrawal);
+router.post("/admin-withdraw", protect, authorizeRole("admin"), adminSelfWithdraw);
+router.get("/admin-history", protect, authorizeRole("admin"), getAdminWithdrawals);
 
 export default router;
