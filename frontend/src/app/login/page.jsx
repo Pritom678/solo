@@ -13,6 +13,27 @@ function LoginForm() {
   const [formData, setFormData] = useState({ email: "", password: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [checking, setChecking] = useState(true);
+
+  // Redirect already-logged-in users
+  useEffect(() => {
+    axiosInstance.get("/api/auth/me")
+      .then((res) => {
+        const u = res.data;
+        if (u?.status === "approved") {
+          router.replace(u.role === "admin" ? "/admin" : "/dashboard");
+        } else {
+          setChecking(false);
+        }
+      })
+      .catch(() => setChecking(false));
+  }, [router]);
+
+  if (checking) return (
+    <div className="flex min-h-[80vh] items-center justify-center">
+      <div className="w-8 h-8 border-2 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin" />
+    </div>
+  );
 
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 

@@ -63,13 +63,24 @@ export const updateProjectStatus = async (req, res) => {
     if (status === "active" && memberPercentage !== undefined) {
       project.memberPercentage = Number(memberPercentage);
     }
+    if (status === "rejected") {
+      project.rejectionNote = req.body.rejectionNote || "";
+    }
     await project.save();
 
     // Credit the member's balance when a project is marked completed (only once)
     if (status === "completed" && !wasAlreadyCompleted) {
-      const earned = project.revenue * (project.memberPercentage / 100);
+      const memberEarned = project.revenue * (project.memberPercentage / 100);
+      const adminEarned = project.revenue * ((100 - project.memberPercentage) / 100);
+
+      // Credit member
       await User.findByIdAndUpdate(project.createdBy, {
-        $inc: { balance: earned },
+        $inc: { balance: memberEarned },
+      });
+
+      // Credit admin (find the admin account)
+      await User.findOneAndUpdate({ role: "admin" }, {
+        $inc: { balance: adminEarned },
       });
     }
 

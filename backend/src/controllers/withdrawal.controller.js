@@ -1,5 +1,6 @@
 import Withdrawal from "../models/withdrawal.model.js";
 import User from "../models/user.model.js";
+import Project from "../models/project.model.js";
 
 // ── User: request a withdrawal ────────────────────────────────────────────────
 
@@ -114,16 +115,26 @@ export const adminSelfWithdraw = async (req, res) => {
     const admin = await User.findById(req.user._id);
     if (!admin) return res.status(404).json({ message: "User not found." });
 
-    if (admin.balance < parsedAmount) {
+    // Compute real agency balance:
+    // total agency cut from all completed projects minus all approved admin withdrawals
+    const completedProjects = await Project.find({ status: "completed" });
+    const totalAgencyCut = completedProjects.reduce(
+      (sum, p) => sum + p.revenue * ((100 - p.memberPercentage) / 100),
+      0
+    );
+
+    const adminWithdrawals = await Withdrawal.find({ user: admin._id, status: "approved" });
+    const totalWithdrawn = adminWithdrawals.reduce((sum, w) => sum + w.amount, 0);
+
+    const agencyBalance = Math.max(0, totalAgencyCut - totalWithdrawn);
+
+    if (parsedAmount > agencyBalance) {
       return res.status(400).json({
-        message: `Insufficient balance. Your current balance is $${admin.balance.toFixed(2)}.`,
+        message: `Insufficient agency balance. Available: $${agencyBalance.toFixed(2)}.`,
       });
     }
 
-    // Deduct and immediately mark as approved — no pending state
-    admin.balance -= parsedAmount;
-    await admin.save();
-
+    // Record as approved immediately — no pending state
     const withdrawal = await Withdrawal.create({
       user: admin._id,
       amount: parsedAmount,
@@ -131,7 +142,9 @@ export const adminSelfWithdraw = async (req, res) => {
       status: "approved",
     });
 
-    res.status(201).json({ message: "Withdrawal recorded.", withdrawal, balance: admin.balance });
+    const newBalance = Math.max(0, agencyBalance - parsedAmount);
+
+    res.status(201).json({ message: "Withdrawal recorded.", withdrawal, balance: newBalance });
   } catch (error) {
     console.error("Admin self-withdraw error:", error);
     res.status(500).json({ message: "Server error." });

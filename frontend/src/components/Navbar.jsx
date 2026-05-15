@@ -69,7 +69,7 @@ export default function Navbar() {
         <div className="flex items-center gap-5">
           {user ? (
             <>
-              {navLink("/dashboard", "Dashboard")}
+              {user.role !== "admin" && navLink("/dashboard", "Dashboard")}
               {user.role === "admin" && navLink("/admin", "Admin")}
 
               <div className="w-px h-4 bg-slate-700 mx-1" />

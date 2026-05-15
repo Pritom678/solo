@@ -292,6 +292,16 @@ function ProjectDetailPanel({ project, onClose, onApprove, onReject, onComplete,
             </div>
           </section>
 
+          {/* Rejection Note */}
+          {project.status === "rejected" && project.rejectionNote && (
+            <section>
+              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Rejection Reason</h3>
+              <div className="glass-panel p-4 border border-red-500/20">
+                <p className="text-red-300 text-sm leading-relaxed">{project.rejectionNote}</p>
+              </div>
+            </section>
+          )}
+
           {/* Extension Request */}
           {project.extensionRequest?.date && (
             <section>
@@ -344,7 +354,7 @@ function ProjectDetailPanel({ project, onClose, onApprove, onReject, onComplete,
           {project.status === "pending_approval" && (
             <div className="flex gap-3">
               <button
-                onClick={() => onReject(project._id)}
+                onClick={() => onReject(project)}
                 className="flex-1 py-3 rounded-xl text-sm font-semibold text-red-400 border border-red-500/30 hover:bg-red-500/10 transition-colors"
               >
                 Reject Project
@@ -384,6 +394,89 @@ function ProjectDetailPanel({ project, onClose, onApprove, onReject, onComplete,
   );
 }
 
+function RejectProjectModal({ project, onConfirm, onClose }) {
+  const [note, setNote] = useState("");
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onConfirm(project._id, note);
+  };
+
+  return (
+    <ModalOverlay onClose={onClose}>
+      <h3 className="text-xl font-bold text-white mb-1">Reject Project</h3>
+      <p className="text-gray-400 text-sm mb-6">
+        Rejecting <span className="text-emerald-400 font-semibold">{project.title}</span>.
+      </p>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-1">Reason <span className="text-gray-500">(optional)</span></label>
+          <textarea rows="3" className="input-emerald" value={note} onChange={(e) => setNote(e.target.value)}
+            placeholder="e.g. Incomplete information, revenue mismatch..." autoFocus />
+        </div>
+        <div className="flex gap-3 pt-2">
+          <button type="button" onClick={onClose} className="btn-outline-emerald flex-1">Cancel</button>
+          <button type="submit" className="flex-1 py-3 rounded-xl font-semibold bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 transition-colors">Reject Project</button>
+        </div>
+      </form>
+    </ModalOverlay>
+  );
+}
+
+function ConfirmModal({ title, message, confirmLabel = "Confirm", confirmClass = "btn-emerald", onConfirm, onClose }) {
+  return (
+    <ModalOverlay onClose={onClose}>
+      <h3 className="text-xl font-bold text-white mb-1">{title}</h3>
+      <p className="text-gray-400 text-sm mb-6">{message}</p>
+      <div className="flex gap-3">
+        <button type="button" onClick={onClose} className="btn-outline-emerald flex-1">Cancel</button>
+        <button type="button" onClick={onConfirm} className={`flex-1 py-3 rounded-xl font-semibold transition-colors ${confirmClass}`}>{confirmLabel}</button>
+      </div>
+    </ModalOverlay>
+  );
+}
+
+function AdminWithdrawModal({ balance, onConfirm, onClose }) {
+  const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("");
+  const [err, setErr] = useState("");
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const num = Number(amount);
+    if (!num || num <= 0) { setErr("Enter a valid amount."); return; }
+    if (num > balance) { setErr(`Exceeds your balance of $${balance.toFixed(2)}.`); return; }
+    onConfirm(num, note);
+  };
+
+  return (
+    <ModalOverlay onClose={onClose}>
+      <h3 className="text-xl font-bold text-white mb-1">Admin Withdrawal</h3>
+      <p className="text-gray-400 text-sm mb-6">
+        Available: <span className="text-emerald-400 font-bold">${balance.toFixed(2)}</span>
+        <span className="block text-xs text-gray-600 mt-1">Funds are withdrawn instantly — no approval required.</span>
+      </p>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-1">Amount ($)</label>
+          <input type="number" min="0.01" step="0.01" className="input-emerald" value={amount}
+            onChange={(e) => { setAmount(e.target.value); setErr(""); }} placeholder="0.00" autoFocus />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-1">Note <span className="text-gray-600">(optional)</span></label>
+          <textarea rows="2" className="input-emerald" value={note}
+            onChange={(e) => setNote(e.target.value)} placeholder="e.g. Bank transfer, PayPal..." />
+        </div>
+        {err && <p className="text-red-400 text-xs">{err}</p>}
+        <div className="flex gap-3 pt-2">
+          <button type="button" onClick={onClose} className="btn-outline-emerald flex-1">Cancel</button>
+          <button type="submit" className="btn-emerald flex-1">Withdraw →</button>
+        </div>
+      </form>
+    </ModalOverlay>
+  );
+}
+
 function RejectWithdrawalModal({ withdrawal, onConfirm, onClose }) {
   const [adminNote, setAdminNote] = useState("");
 
@@ -418,8 +511,9 @@ function RejectWithdrawalModal({ withdrawal, onConfirm, onClose }) {
 
 export default function AdminDashboard() {
   const router = useRouter();
-  const { loading: authLoading } = useAuth("admin");
+  const { user: authUser, loading: authLoading } = useAuth("admin");
   const [users, setUsers] = useState([]);
+  const [allMembers, setAllMembers] = useState([]);
   const [projects, setProjects] = useState([]);
   const [withdrawals, setWithdrawals] = useState([]);
   const [adminBalance, setAdminBalance] = useState(0);
@@ -432,15 +526,20 @@ export default function AdminDashboard() {
   const [approveModal, setApproveModal] = useState(null);
   const [extensionModal, setExtensionModal] = useState(null);
   const [rejectWithdrawalModal, setRejectWithdrawalModal] = useState(null);
+  const [rejectProjectModal, setRejectProjectModal] = useState(null);
+  const [confirmCompleteModal, setConfirmCompleteModal] = useState(null);
   const [detailPanel, setDetailPanel] = useState(null);
   const [showAdminWithdrawModal, setShowAdminWithdrawModal] = useState(false);
 
   // Track which projects have already triggered a deadline notification this session
   const notifiedRef = useRef(new Set());
 
+  // Only fetch data once useAuth has confirmed the admin is logged in
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (!authLoading && authUser) {
+      fetchData();
+    }
+  }, [authLoading, authUser]);
 
   // Fire toast notifications for active projects within 2 days of deadline
   useEffect(() => {
@@ -527,18 +626,27 @@ export default function AdminDashboard() {
 
   const fetchData = async () => {
     try {
-      const [usersRes, projectsRes, withdrawalsRes, meRes, adminHistRes] = await Promise.all([
+      const [usersRes, allMembersRes, projectsRes, withdrawalsRes, adminHistRes] = await Promise.all([
         axiosInstance.get("/admin/pending-users"),
+        axiosInstance.get("/admin/users"),
         axiosInstance.get("/projects"),
         axiosInstance.get("/withdrawals"),
-        axiosInstance.get("/api/auth/me"),
         axiosInstance.get("/withdrawals/admin-history"),
       ]);
       setUsers(usersRes.data.users);
+      setAllMembers(allMembersRes.data.users);
       setProjects(projectsRes.data.projects);
       setWithdrawals(withdrawalsRes.data.withdrawals);
-      setAdminBalance(meRes.data.balance ?? 0);
       setAdminWithdrawals(adminHistRes.data.withdrawals);
+
+      const completedProjects = projectsRes.data.projects.filter((p) => p.status === "completed");
+      const totalAgencyCut = completedProjects.reduce(
+        (sum, p) => sum + p.revenue * ((100 - p.memberPercentage) / 100), 0
+      );
+      const totalWithdrawn = adminHistRes.data.withdrawals
+        .filter((w) => w.status === "approved")
+        .reduce((sum, w) => sum + w.amount, 0);
+      setAdminBalance(Math.max(0, totalAgencyCut - totalWithdrawn));
     } catch (err) {
       console.error(err);
       if (err.response?.status === 401 || err.response?.status === 403) {
@@ -557,14 +665,27 @@ export default function AdminDashboard() {
     try {
       await axiosInstance.patch(`/admin/users/${userId}/approve`);
       setUsers((prev) => prev.filter((u) => u._id !== userId));
-    } catch { setError("Failed to approve user."); }
+      setAllMembers((prev) => prev.map((u) => u._id === userId ? { ...u, status: "approved" } : u));
+      toast.success("User approved.");
+    } catch { toast.error("Failed to approve user."); }
   };
 
   const handleRejectUser = async (userId) => {
     try {
       await axiosInstance.patch(`/admin/users/${userId}/reject`);
       setUsers((prev) => prev.filter((u) => u._id !== userId));
-    } catch { setError("Failed to reject user."); }
+      setAllMembers((prev) => prev.map((u) => u._id === userId ? { ...u, status: "rejected" } : u));
+      toast.error("User rejected.");
+    } catch { toast.error("Failed to reject user."); }
+  };
+
+  const handleDeactivateUser = async (userId) => {
+    try {
+      const res = await axiosInstance.patch(`/admin/users/${userId}/deactivate`);
+      const updated = res.data.user;
+      setAllMembers((prev) => prev.map((u) => u._id === userId ? { ...u, status: updated.status } : u));
+      toast.success(updated.status === "rejected" ? "Member deactivated." : "Member reactivated.");
+    } catch { toast.error("Failed to update member status."); }
   };
 
   // ── Project Actions ───────────────────────────────────────────────────────
@@ -574,16 +695,29 @@ export default function AdminDashboard() {
       await axiosInstance.patch(`/projects/${projectId}/status`, { status: "active", memberPercentage });
       setApproveModal(null);
       setDetailPanel(null);
+      toast.success("Project approved and activated.");
       fetchData();
-    } catch { setError("Failed to approve project."); setApproveModal(null); }
+    } catch { toast.error("Failed to approve project."); setApproveModal(null); }
   };
 
-  const handleProjectStatus = async (projectId, status) => {
+  const handleRejectProject = async (projectId, rejectionNote) => {
     try {
-      await axiosInstance.patch(`/projects/${projectId}/status`, { status });
+      await axiosInstance.patch(`/projects/${projectId}/status`, { status: "rejected", rejectionNote });
+      setRejectProjectModal(null);
       setDetailPanel(null);
+      toast.error("Project rejected.");
       fetchData();
-    } catch { setError("Failed to update project status."); }
+    } catch { toast.error("Failed to reject project."); setRejectProjectModal(null); }
+  };
+
+  const handleCompleteProject = async (projectId) => {
+    try {
+      await axiosInstance.patch(`/projects/${projectId}/status`, { status: "completed" });
+      setConfirmCompleteModal(null);
+      setDetailPanel(null);
+      toast.success("Project marked as completed. Balances credited.");
+      fetchData();
+    } catch { toast.error("Failed to complete project."); setConfirmCompleteModal(null); }
   };
 
   // ── Extension Actions ─────────────────────────────────────────────────────
@@ -593,8 +727,9 @@ export default function AdminDashboard() {
       await axiosInstance.post(`/projects/${projectId}/extension`, { date, reason });
       setExtensionModal(null);
       setDetailPanel(null);
+      toast.success("Extension request sent to member.");
       fetchData();
-    } catch { setError("Failed to request extension."); setExtensionModal(null); }
+    } catch { toast.error("Failed to request extension."); setExtensionModal(null); }
   };
 
   // ── PDF loader ────────────────────────────────────────────────────────────
@@ -603,7 +738,21 @@ export default function AdminDashboard() {
     try {
       const res = await axiosInstance.get(pdfUrl, { responseType: "blob" });
       window.open(URL.createObjectURL(res.data), "_blank");
-    } catch { setError("Could not load PDF."); }
+    } catch { toast.error("Could not load PDF."); }
+  };
+
+  // ── Admin Self-Withdrawal ─────────────────────────────────────────────────
+
+  const handleAdminWithdraw = async (amount, note) => {
+    try {
+      await axiosInstance.post("/withdrawals/admin-withdraw", { amount, note });
+      setShowAdminWithdrawModal(false);
+      toast.success(`$${amount.toFixed(2)} withdrawn successfully.`);
+      fetchData();
+    } catch (err) {
+      setShowAdminWithdrawModal(false);
+      toast.error(err.response?.data?.message || "Failed to process withdrawal.");
+    }
   };
 
   // ── Withdrawal Actions ────────────────────────────────────────────────────
@@ -611,19 +760,21 @@ export default function AdminDashboard() {
   const handleApproveWithdrawal = async (withdrawalId) => {
     try {
       await axiosInstance.patch(`/withdrawals/${withdrawalId}/approve`);
+      toast.success("Withdrawal approved.");
       fetchData();
-    } catch { setError("Failed to approve withdrawal."); }
+    } catch { toast.error("Failed to approve withdrawal."); }
   };
 
   const handleRejectWithdrawal = async (withdrawalId, adminNote) => {
     try {
       await axiosInstance.patch(`/withdrawals/${withdrawalId}/reject`, { adminNote });
       setRejectWithdrawalModal(null);
+      toast.error("Withdrawal rejected. Balance refunded.");
       fetchData();
-    } catch { setError("Failed to reject withdrawal."); setRejectWithdrawalModal(null); }
+    } catch { toast.error("Failed to reject withdrawal."); setRejectWithdrawalModal(null); }
   };
 
-  if (authLoading || loading) return (
+  if (authLoading || (authUser && loading)) return (
     <div className="flex min-h-[60vh] items-center justify-center">
       <div className="w-8 h-8 border-4 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin"></div>
     </div>
@@ -645,13 +796,25 @@ export default function AdminDashboard() {
       {approveModal && <ApproveProjectModal project={approveModal} onConfirm={handleApproveProject} onClose={() => setApproveModal(null)} />}
       {extensionModal && <ExtensionModal project={extensionModal} onConfirm={handleRequestExtension} onClose={() => setExtensionModal(null)} />}
       {rejectWithdrawalModal && <RejectWithdrawalModal withdrawal={rejectWithdrawalModal} onConfirm={handleRejectWithdrawal} onClose={() => setRejectWithdrawalModal(null)} />}
+      {rejectProjectModal && <RejectProjectModal project={rejectProjectModal} onConfirm={handleRejectProject} onClose={() => setRejectProjectModal(null)} />}
+      {confirmCompleteModal && (
+        <ConfirmModal
+          title="Mark as Completed?"
+          message={<>This will credit balances to both the member and the agency. <span className="text-white font-semibold">This cannot be undone.</span></>}
+          confirmLabel="Yes, Complete"
+          confirmClass="py-3 rounded-xl font-semibold bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30 transition-colors"
+          onConfirm={() => handleCompleteProject(confirmCompleteModal)}
+          onClose={() => setConfirmCompleteModal(null)}
+        />
+      )}
+      {showAdminWithdrawModal && <AdminWithdrawModal balance={adminBalance} onConfirm={handleAdminWithdraw} onClose={() => setShowAdminWithdrawModal(false)} />}
       {detailPanel && (
         <ProjectDetailPanel
           project={detailPanel}
           onClose={() => setDetailPanel(null)}
           onApprove={(project) => { setDetailPanel(null); setApproveModal(project); }}
-          onReject={(projectId) => { setDetailPanel(null); handleProjectStatus(projectId, "rejected"); }}
-          onComplete={(projectId) => { setDetailPanel(null); handleProjectStatus(projectId, "completed"); }}
+          onReject={(project) => { setDetailPanel(null); setRejectProjectModal(project); }}
+          onComplete={(projectId) => { setDetailPanel(null); setConfirmCompleteModal(projectId); }}
           onExtend={(project) => { setDetailPanel(null); setExtensionModal(project); }}
           onLoadPdf={handleLoadPdf}
         />
@@ -671,7 +834,7 @@ export default function AdminDashboard() {
         )}
 
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="glass-panel p-6 border-l-4 border-emerald-500">
             <p className="text-gray-400 text-sm font-medium mb-1">Total Agency Profit</p>
             <h2 className="text-4xl font-black text-white">${adminTotalEarned.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h2>
@@ -680,14 +843,21 @@ export default function AdminDashboard() {
             <p className="text-gray-400 text-sm font-medium mb-1">Pending Agency Profit</p>
             <h2 className="text-4xl font-black text-white">${adminPendingEarned.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h2>
           </div>
+          <div className="glass-panel p-6 border-l-4 border-blue-500">
+            <p className="text-gray-400 text-sm font-medium mb-1">Current Balance</p>
+            <h2 className={`text-4xl font-black ${adminBalance > 0 ? "text-emerald-400" : "text-white"}`}>${adminBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h2>
+            <p className="text-gray-600 text-xs mt-2">available to withdraw</p>
+          </div>
         </div>
 
         {/* Tabs */}
         <div className="flex gap-4 mb-8 border-b border-white/10 pb-4 flex-wrap">
           {[
             { key: "users", label: `Pending Users (${users.length})` },
+            { key: "members", label: `All Members (${allMembers.length})` },
             { key: "projects", label: `All Projects (${projects.length})` },
             { key: "withdrawals", label: `Withdrawals${pendingWithdrawals.length > 0 ? ` (${pendingWithdrawals.length} pending)` : ""}` },
+            { key: "finance", label: "Agency Finance" },
             { key: "analytics", label: "Analytics" },
           ].map((tab) => (
             <button key={tab.key} onClick={() => setActiveTab(tab.key)}
@@ -735,6 +905,80 @@ export default function AdminDashboard() {
                               <button onClick={() => handleRejectUser(user._id)} className="px-4 py-2 text-sm font-medium text-red-400 hover:text-white hover:bg-red-500/20 rounded-lg transition-colors">Reject</button>
                               <button onClick={() => handleApproveUser(user._id)} className="btn-emerald px-6 py-2 text-sm">Approve</button>
                             </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── MEMBERS TAB ── */}
+          {activeTab === "members" && (
+            <>
+              <div className="px-8 py-5 border-b border-white/5 bg-black/20">
+                <h2 className="text-lg font-semibold text-white">All Members</h2>
+              </div>
+              {allMembers.length === 0 ? (
+                <div className="p-16 text-center text-gray-500">No members yet.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-white/5 text-sm text-gray-400 uppercase tracking-wider">
+                        <th className="px-8 py-4 font-medium">Member</th>
+                        <th className="px-8 py-4 font-medium">Email</th>
+                        <th className="px-8 py-4 font-medium">Balance</th>
+                        <th className="px-8 py-4 font-medium">Joined</th>
+                        <th className="px-8 py-4 font-medium">Status</th>
+                        <th className="px-8 py-4 font-medium text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {allMembers.map((member) => (
+                        <tr key={member._id} className="hover:bg-white/[0.02] transition-colors">
+                          <td className="px-8 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-400 font-black text-sm flex-shrink-0">
+                                {member.fullName.charAt(0).toUpperCase()}
+                              </div>
+                              <div>
+                                <div className="font-semibold text-white">{member.fullName}</div>
+                                <div className="text-xs text-gray-500 uppercase tracking-wider">{member.role}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-8 py-4 text-gray-300 text-sm">{member.email}</td>
+                          <td className="px-8 py-4">
+                            <span className={`font-mono font-bold text-sm ${member.balance > 0 ? "text-emerald-400" : "text-gray-500"}`}>
+                              ${(member.balance ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          </td>
+                          <td className="px-8 py-4 text-gray-400 text-sm">{new Date(member.createdAt).toLocaleDateString()}</td>
+                          <td className="px-8 py-4">
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
+                              member.status === "approved" ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/30" :
+                              member.status === "pending"  ? "text-yellow-400 bg-yellow-500/10 border-yellow-500/30" :
+                              "text-red-400 bg-red-500/10 border-red-500/30"
+                            }`}>
+                              {member.status === "rejected" ? "deactivated" : member.status}
+                            </span>
+                          </td>
+                          <td className="px-8 py-4 text-right">
+                            {member.status !== "pending" && (
+                              <button
+                                onClick={() => handleDeactivateUser(member._id)}
+                                className={`px-4 py-1.5 text-xs font-semibold rounded transition-colors border ${
+                                  member.status === "approved"
+                                    ? "text-red-400 border-red-500/30 hover:bg-red-500/10"
+                                    : "text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10"
+                                }`}
+                              >
+                                {member.status === "approved" ? "Deactivate" : "Reactivate"}
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -810,6 +1054,12 @@ export default function AdminDashboard() {
                                 <span className="text-gray-400 block">Waiting for member to approve.</span>
                               </div>
                             )}
+                            {project.status === "rejected" && project.rejectionNote && (
+                              <div className="mt-2 p-2 bg-red-500/8 border border-red-500/20 rounded text-xs">
+                                <span className="text-red-400 font-bold block mb-0.5">Reason:</span>
+                                <span className="text-gray-400">{project.rejectionNote}</span>
+                              </div>
+                            )}
                           </td>
                           <td className="px-8 py-4 text-right">
                             <div className="flex justify-end gap-2 flex-col items-end">
@@ -821,13 +1071,13 @@ export default function AdminDashboard() {
                               </button>
                               {project.status === "pending_approval" && (
                                 <div className="flex gap-2 w-full max-w-[130px]">
-                                  <button onClick={() => handleProjectStatus(project._id, "rejected")} className="flex-1 py-1.5 text-xs text-red-400 hover:bg-red-500/20 rounded transition-colors border border-red-500/20">Reject</button>
+                                  <button onClick={() => setRejectProjectModal(project)} className="flex-1 py-1.5 text-xs text-red-400 hover:bg-red-500/20 rounded transition-colors border border-red-500/20">Reject</button>
                                   <button onClick={() => setApproveModal(project)} className="flex-1 btn-emerald py-1.5 text-xs">Approve</button>
                                 </div>
                               )}
                               {project.status === "active" && (
                                 <>
-                                  <button onClick={() => handleProjectStatus(project._id, "completed")} className="px-4 py-1.5 text-xs font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded hover:bg-blue-500/30 transition-colors w-full max-w-[130px]">
+                                  <button onClick={() => setConfirmCompleteModal(project._id)} className="px-4 py-1.5 text-xs font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded hover:bg-blue-500/30 transition-colors w-full max-w-[130px]">
                                     Mark Completed
                                   </button>
                                   {project.extensionRequest?.status !== "pending" && (
@@ -851,8 +1101,9 @@ export default function AdminDashboard() {
           {/* ── WITHDRAWALS TAB ── */}
           {activeTab === "withdrawals" && (
             <>
+              {/* ── Member Withdrawal Requests ── */}
               <div className="px-8 py-5 border-b border-white/5 bg-black/20">
-                <h2 className="text-lg font-semibold text-white">Withdrawal Requests</h2>
+                <h2 className="text-lg font-semibold text-white">Member Withdrawal Requests</h2>
               </div>
               {withdrawals.length === 0 ? (
                 <div className="p-16 text-center text-gray-500">No withdrawal requests yet.</div>
@@ -910,6 +1161,112 @@ export default function AdminDashboard() {
               )}
             </>
           )}
+
+          {/* ── FINANCE TAB ── */}
+          {activeTab === "finance" && (() => {
+            const totalEarned = adminTotalEarned;
+            const totalWithdrawnAmt = adminWithdrawals
+              .filter((w) => w.status === "approved")
+              .reduce((sum, w) => sum + w.amount, 0);
+
+            return (
+              <>
+                {/* Balance cards */}
+                <div className="p-8 border-b border-white/5 bg-black/20">
+                  <h2 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-6">Agency Balance Overview</h2>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                    <div className="glass-panel p-6 border-l-4 border-emerald-500">
+                      <p className="text-gray-400 text-xs font-medium uppercase tracking-widest mb-2">Total Earned</p>
+                      <p className="text-3xl font-black text-white">
+                        ${totalEarned.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                      <p className="text-gray-600 text-xs mt-1">from {projects.filter(p => p.status === "completed").length} completed projects</p>
+                    </div>
+                    <div className="glass-panel p-6 border-l-4 border-red-500">
+                      <p className="text-gray-400 text-xs font-medium uppercase tracking-widest mb-2">Total Withdrawn</p>
+                      <p className="text-3xl font-black text-white">
+                        ${totalWithdrawnAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                      <p className="text-gray-600 text-xs mt-1">across {adminWithdrawals.filter(w => w.status === "approved").length} withdrawals</p>
+                    </div>
+                    <div className="glass-panel p-6 border-l-4 border-blue-500">
+                      <p className="text-gray-400 text-xs font-medium uppercase tracking-widest mb-2">Current Balance</p>
+                      <p className={`text-3xl font-black ${adminBalance > 0 ? "text-emerald-400" : "text-gray-500"}`}>
+                        ${adminBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                      <p className="text-gray-600 text-xs mt-1">available to withdraw</p>
+                    </div>
+                  </div>
+
+                  {/* Pending revenue */}
+                  <div className="glass-panel p-5 flex items-center justify-between mb-6">
+                    <div>
+                      <p className="text-gray-400 text-xs font-medium uppercase tracking-widest mb-1">Pending Revenue</p>
+                      <p className="text-2xl font-black text-yellow-400">
+                        ${adminPendingEarned.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                      <p className="text-gray-600 text-xs mt-1">from {projects.filter(p => p.status === "active").length} active projects — not yet available</p>
+                    </div>
+                    <div className="w-12 h-12 rounded-full bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center text-yellow-400 text-xl">
+                      ⏳
+                    </div>
+                  </div>
+
+                  {/* Withdraw button */}
+                  <button
+                    onClick={() => setShowAdminWithdrawModal(true)}
+                    disabled={adminBalance <= 0}
+                    className="btn-emerald px-10 py-3 text-sm disabled:opacity-30 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none"
+                  >
+                    Withdraw Funds →
+                  </button>
+                </div>
+
+                {/* Withdrawal history */}
+                <div className="px-8 py-5 border-b border-white/5 bg-black/20">
+                  <h2 className="text-lg font-semibold text-white">Withdrawal History</h2>
+                </div>
+                {adminWithdrawals.length === 0 ? (
+                  <div className="p-16 text-center text-gray-500">No withdrawals made yet.</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-white/5 text-sm text-gray-400 uppercase tracking-wider">
+                          <th className="px-8 py-4 font-medium">#</th>
+                          <th className="px-8 py-4 font-medium">Amount</th>
+                          <th className="px-8 py-4 font-medium">Note</th>
+                          <th className="px-8 py-4 font-medium">Date</th>
+                          <th className="px-8 py-4 font-medium">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {adminWithdrawals.map((w, i) => (
+                          <tr key={w._id} className="hover:bg-white/[0.02] transition-colors">
+                            <td className="px-8 py-4 text-gray-600 text-sm font-mono">{adminWithdrawals.length - i}</td>
+                            <td className="px-8 py-4">
+                              <span className="text-white font-black text-lg font-mono">
+                                ${w.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                            </td>
+                            <td className="px-8 py-4 text-gray-400 text-sm">
+                              {w.note || <span className="text-gray-600 italic">No note</span>}
+                            </td>
+                            <td className="px-8 py-4 text-gray-400 text-sm">{new Date(w.createdAt).toLocaleDateString()}</td>
+                            <td className="px-8 py-4">
+                              <span className="text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">
+                                {w.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            );
+          })()}
 
           {/* ── ANALYTICS TAB ── */}
           {activeTab === "analytics" && (

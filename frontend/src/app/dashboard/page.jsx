@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import axiosInstance from "../../lib/axios";
 import { useAuth } from "../../lib/useAuth";
 import Link from "next/link";
+import toast from "react-hot-toast";
 
 // ── Withdrawal Modal ──────────────────────────────────────────────────────────
 
@@ -81,7 +82,6 @@ export default function Dashboard() {
   const [withdrawals, setWithdrawals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showWithdrawalModal, setShowWithdrawalModal] = useState(false);
-  const [msg, setMsg] = useState(null);
 
   useEffect(() => {
     if (!authLoading && user) fetchData();
@@ -105,9 +105,10 @@ export default function Dashboard() {
   const handleExtensionResponse = async (projectId, status) => {
     try {
       await axiosInstance.patch(`/projects/${projectId}/extension`, { status });
+      toast.success(status === "approved" ? "Extension accepted." : "Extension rejected.");
       fetchData();
     } catch {
-      setMsg({ type: "error", text: "Failed to respond to extension." });
+      toast.error("Failed to respond to extension.");
     }
   };
 
@@ -115,11 +116,11 @@ export default function Dashboard() {
     try {
       await axiosInstance.post("/withdrawals", { amount, note });
       setShowWithdrawalModal(false);
-      setMsg({ type: "success", text: "Withdrawal request submitted. Awaiting admin approval." });
+      toast.success("Withdrawal request submitted. Awaiting admin approval.");
       fetchData();
     } catch (err) {
       setShowWithdrawalModal(false);
-      setMsg({ type: "error", text: err.response?.data?.message || "Failed to submit withdrawal." });
+      toast.error(err.response?.data?.message || "Failed to submit withdrawal.");
     }
   };
 
@@ -146,17 +147,6 @@ export default function Dashboard() {
         <WithdrawalModal balance={user?.balance ?? 0} onConfirm={handleWithdrawalRequest} onClose={() => setShowWithdrawalModal(false)} />
       )}
 
-      {msg && (
-        <div className={`flex items-center justify-between p-3 mb-6 rounded border text-xs font-mono ${
-          msg.type === "success"
-            ? "bg-emerald-500/8 border-emerald-500/20 text-emerald-400"
-            : "bg-red-500/8 border-red-500/20 text-red-400"
-        }`}>
-          <span>{msg.type === "success" ? "✓" : "✗"} {msg.text}</span>
-          <button onClick={() => setMsg(null)} className="opacity-50 hover:opacity-100 ml-4">✕</button>
-        </div>
-      )}
-
       {/* Page header */}
       <div className="flex items-center justify-between mb-8">
         <div>
@@ -181,6 +171,13 @@ export default function Dashboard() {
           <p className="text-3xl font-black text-white font-mono tabular-nums mb-4">
             ${(user?.balance ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
+          {(user?.balance ?? 0) === 0 && (
+            <p className="text-[10px] font-mono text-slate-600 mb-3">
+              {projects.some(p => p.status === "active")
+                ? "↳ Credited when active projects complete"
+                : "↳ Submit a project to start earning"}
+            </p>
+          )}
           <button
             onClick={() => setShowWithdrawalModal(true)}
             disabled={!user?.balance || user.balance <= 0 || hasPendingWithdrawal}
@@ -247,90 +244,114 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+      <div className="glass-panel overflow-hidden mb-8">
         {projects.length === 0 ? (
-          <div className="col-span-full glass-panel p-16 text-center">
+          <div className="p-16 text-center">
             <p className="text-slate-600 font-mono text-sm">// no projects yet</p>
             <Link href="/dashboard/submit" className="btn-emerald mt-6 inline-flex text-xs py-2.5 px-5">
               Submit First Project →
             </Link>
           </div>
         ) : (
-          projects.map((project) => {
-            const timeLeft = getTimeLeft(project.deadline);
-            return (
-              <div key={project._id} className="glass-panel flex flex-col h-full hover:-translate-y-0.5 transition-transform duration-200 group">
-                {/* Card header */}
-                <div className="p-5 pb-4">
-                  <div className="flex items-start justify-between gap-2 mb-3">
-                    <h3 className="text-sm font-bold text-white line-clamp-1 leading-tight">{project.title}</h3>
-                    <span className={`tag flex-shrink-0 ${STATUS_STYLES[project.status] || STATUS_STYLES.pending_approval}`}>
-                      {project.status.replace("_", " ")}
-                    </span>
-                  </div>
-                  <p className="text-slate-500 text-xs leading-relaxed line-clamp-2">{project.description}</p>
-                </div>
-
-                {/* Card footer */}
-                <div className="mt-auto border-t border-white/[0.06] bg-black/20 px-5 py-4 rounded-b-[0.875rem] space-y-2.5">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-slate-600 font-mono">share</span>
-                    <span className="font-mono font-bold text-emerald-400">
-                      ${(project.revenue * (project.memberPercentage / 100)).toLocaleString()}
-                      <span className="text-slate-600 font-normal ml-1">({project.memberPercentage}%)</span>
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-slate-600 font-mono">deadline</span>
-                    <div className="text-right">
-                      <span className="text-slate-400 font-mono block">{new Date(project.deadline).toLocaleDateString()}</span>
-                      {project.status === "active" && (
-                        <span className={`text-[10px] font-mono font-bold ${timeLeft.urgent ? "text-red-400" : "text-emerald-500"}`}>
-                          {timeLeft.label}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-white/[0.06] text-[10px] font-mono text-slate-500 uppercase tracking-widest">
+                  <th className="px-5 py-3 font-medium">Project</th>
+                  <th className="px-5 py-3 font-medium">Member</th>
+                  <th className="px-5 py-3 font-medium">Revenue</th>
+                  <th className="px-5 py-3 font-medium">Member Share</th>
+                  <th className="px-5 py-3 font-medium">Deadline</th>
+                  <th className="px-5 py-3 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/[0.04]">
+                {projects.map((project) => {
+                  const timeLeft = getTimeLeft(project.deadline);
+                  const memberEarning = project.revenue * (project.memberPercentage / 100);
+                  return (
+                    <tr key={project._id} className="hover:bg-white/[0.015] transition-colors group">
+                      <td className="px-5 py-4">
+                        <p className="text-white font-bold text-sm leading-tight">{project.title}</p>
+                        <p className="text-slate-600 text-[10px] font-mono mt-0.5 line-clamp-1 max-w-[180px]">{project.description}</p>
+                        {project.pdfUrl && (
+                          <button
+                            onClick={async () => {
+                              try {
+                                const res = await axiosInstance.get(project.pdfUrl, { responseType: "blob" });
+                                window.open(URL.createObjectURL(res.data), "_blank");
+                              } catch {
+                                toast.error("Could not load PDF.");
+                              }
+                            }}
+                            className="text-emerald-500/60 hover:text-emerald-400 text-[10px] font-mono mt-1 block transition-colors"
+                          >
+                            ↗ PDF
+                          </button>
+                        )}
+                      </td>
+                      <td className="px-5 py-4">
+                        <p className="text-slate-300 text-sm font-medium">{project.createdBy?.fullName ?? user?.fullName}</p>
+                        <p className="text-slate-600 text-[10px] font-mono mt-0.5">{project.createdBy?.email ?? user?.email}</p>
+                      </td>
+                      <td className="px-5 py-4">
+                        <p className="text-white font-mono font-bold text-sm">${project.revenue.toLocaleString()}</p>
+                        <p className="text-slate-600 text-[10px] font-mono mt-0.5">total</p>
+                      </td>
+                      <td className="px-5 py-4">
+                        {project.memberPercentage > 0 ? (
+                          <>
+                            <p className="text-emerald-400 font-mono font-bold text-sm">
+                              ${memberEarning.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </p>
+                            <p className="text-slate-600 text-[10px] font-mono mt-0.5">{project.memberPercentage}% of revenue</p>
+                          </>
+                        ) : (
+                          <p className="text-slate-600 text-[10px] font-mono italic">Not set yet</p>
+                        )}
+                      </td>
+                      <td className="px-5 py-4">
+                        <p className="text-slate-400 font-mono text-xs">{new Date(project.deadline).toLocaleDateString()}</p>
+                        {project.status === "active" && (
+                          <p className={`text-[10px] font-mono font-bold mt-0.5 ${timeLeft.urgent ? "text-red-400" : "text-emerald-500"}`}>
+                            {timeLeft.label}
+                          </p>
+                        )}
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider border ${STATUS_STYLES[project.status] || STATUS_STYLES.pending_approval}`}>
+                          {project.status.replace("_", " ")}
                         </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Extension request */}
-                  {project.extensionRequest?.status === "pending" && (
-                    <div className="p-3 rounded bg-yellow-500/8 border border-yellow-500/20 text-xs">
-                      <span className="text-yellow-400 font-mono font-bold block mb-1">⚡ Extension Requested</span>
-                      <span className="text-slate-400 font-mono block">→ {new Date(project.extensionRequest.date).toLocaleDateString()}</span>
-                      <span className="text-slate-500 font-mono block mb-2 text-[10px]">{project.extensionRequest.reason}</span>
-                      <div className="flex gap-2">
-                        <button onClick={() => handleExtensionResponse(project._id, "approved")}
-                          className="flex-1 bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 hover:bg-emerald-500/25 py-1.5 rounded text-[10px] font-mono font-bold transition-colors">
-                          Accept
-                        </button>
-                        <button onClick={() => handleExtensionResponse(project._id, "rejected")}
-                          className="flex-1 bg-red-500/15 text-red-400 border border-red-500/25 hover:bg-red-500/25 py-1.5 rounded text-[10px] font-mono font-bold transition-colors">
-                          Reject
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {project.pdfUrl && (
-                    <button
-                      onClick={async () => {
-                        try {
-                          const res = await axiosInstance.get(project.pdfUrl, { responseType: "blob" });
-                          window.open(URL.createObjectURL(res.data), "_blank");
-                        } catch {
-                          setMsg({ type: "error", text: "Could not load PDF." });
-                        }
-                      }}
-                      className="w-full py-2 bg-white/[0.03] hover:bg-white/[0.06] text-center rounded text-[10px] text-slate-400 hover:text-emerald-400 transition-colors border border-white/[0.06] font-mono tracking-wider"
-                    >
-                      ↗ View Proposal PDF
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })
+                        {project.status === "rejected" && project.rejectionNote && (
+                          <div className="mt-2 p-2 bg-red-500/8 border border-red-500/20 rounded text-[10px]">
+                            <span className="text-red-400 font-mono font-bold block mb-0.5">Reason:</span>
+                            <span className="text-slate-500 font-mono">{project.rejectionNote}</span>
+                          </div>
+                        )}
+                        {project.extensionRequest?.status === "pending" && (
+                          <div className="mt-2 p-2 bg-yellow-500/8 border border-yellow-500/20 rounded text-[10px]">
+                            <span className="text-yellow-400 font-mono font-bold block mb-1">⚡ Extension Requested</span>
+                            <span className="text-slate-400 font-mono block">→ {new Date(project.extensionRequest.date).toLocaleDateString()}</span>
+                            <span className="text-slate-500 font-mono block mb-1.5 text-[9px]">{project.extensionRequest.reason}</span>
+                            <div className="flex gap-1.5">
+                              <button onClick={() => handleExtensionResponse(project._id, "approved")}
+                                className="flex-1 bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 hover:bg-emerald-500/25 py-1 rounded text-[9px] font-mono font-bold transition-colors">
+                                Accept
+                              </button>
+                              <button onClick={() => handleExtensionResponse(project._id, "rejected")}
+                                className="flex-1 bg-red-500/15 text-red-400 border border-red-500/25 hover:bg-red-500/25 py-1 rounded text-[9px] font-mono font-bold transition-colors">
+                                Reject
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>

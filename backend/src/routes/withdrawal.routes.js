@@ -17,11 +17,11 @@ const router = express.Router();
 router.post("/", protect, requestWithdrawal);
 router.get("/mine", protect, getMyWithdrawals);
 
-// Admin routes
+// Admin routes — static paths MUST come before /:withdrawalId
+router.get("/admin-history", protect, authorizeRole("admin"), getAdminWithdrawals);
+router.post("/admin-withdraw", protect, authorizeRole("admin"), adminSelfWithdraw);
 router.get("/", protect, authorizeRole("admin"), getAllWithdrawals);
 router.patch("/:withdrawalId/approve", protect, authorizeRole("admin"), approveWithdrawal);
 router.patch("/:withdrawalId/reject", protect, authorizeRole("admin"), rejectWithdrawal);
-router.post("/admin-withdraw", protect, authorizeRole("admin"), adminSelfWithdraw);
-router.get("/admin-history", protect, authorizeRole("admin"), getAdminWithdrawals);
 
 export default router;

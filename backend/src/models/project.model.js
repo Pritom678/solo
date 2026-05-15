@@ -22,6 +22,10 @@ const projectSchema = new mongoose.Schema(
         default: "pending"
       }
     },
+    rejectionNote: {
+      type: String,
+      default: "",
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
