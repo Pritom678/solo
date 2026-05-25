@@ -3,10 +3,20 @@ import User from "../models/user.model.js";
 
 export const createProject = async (req, res) => {
   try {
-    const { title, description, revenue, deadline } = req.body;
+    const { title, description, revenue, deadline, assignedMemberId, memberPercentage } = req.body;
     
     // Check if file is uploaded
     const pdfUrl = req.file ? `/uploads/${req.file.filename}` : null;
+
+    let creatorId = req.user._id;
+    let initialStatus = "pending_approval";
+    let initialPercentage = 0;
+
+    if (req.user.role === "admin" && assignedMemberId) {
+      creatorId = assignedMemberId;
+      initialStatus = "active";
+      initialPercentage = Number(memberPercentage) || 0;
+    }
 
     const project = new Project({
       title,
@@ -14,11 +24,18 @@ export const createProject = async (req, res) => {
       revenue: Number(revenue),
       deadline: new Date(deadline),
       pdfUrl,
-      createdBy: req.user._id,
+      createdBy: creatorId,
+      status: initialStatus,
+      memberPercentage: initialPercentage,
     });
 
     await project.save();
-    res.status(201).json({ message: "Project submitted for approval", project });
+    
+    const message = initialStatus === "active" 
+      ? "Project created and assigned to member successfully" 
+      : "Project submitted for approval";
+
+    res.status(201).json({ message, project });
   } catch (error) {
     console.error("Create project error:", error);
     res.status(500).json({ message: "Failed to create project", error: error.message });

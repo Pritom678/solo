@@ -507,6 +507,230 @@ function RejectWithdrawalModal({ withdrawal, onConfirm, onClose }) {
   );
 }
 
+// ─── Alert Center Component ──────────────────────────────────────────────────
+function AdminAlertCenter({ pendingUsersCount, pendingWithdrawalsCount, urgentProjects, onTabChange, onViewProject }) {
+  const totalAlerts = pendingUsersCount + pendingWithdrawalsCount + urgentProjects.length;
+  if (totalAlerts === 0) return null;
+
+  return (
+    <div className="glass-panel p-5 mb-8 border border-red-500/20 bg-red-950/5 relative overflow-hidden animate-fade-up">
+      {/* Red ambient indicator light */}
+      <div className="absolute top-0 left-0 w-1 h-full bg-red-500" />
+      
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <span className="flex h-2 w-2 relative">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+          </span>
+          <h3 className="text-xs font-mono font-bold text-red-400 uppercase tracking-widest">
+            Attention Required ({totalAlerts})
+          </h3>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {pendingUsersCount > 0 && (
+          <div className="bg-black/30 border border-red-500/10 rounded-lg p-3 flex flex-col justify-between">
+            <div>
+              <p className="text-xs font-bold text-white mb-1">{pendingUsersCount} Pending Registration{pendingUsersCount > 1 ? "s" : ""}</p>
+              <p className="text-[11px] text-gray-400 font-mono">New members are awaiting credentials approval.</p>
+            </div>
+            <button
+              onClick={() => onTabChange("users")}
+              className="mt-3 text-[10px] text-red-400 font-mono font-bold uppercase tracking-wider text-left hover:text-white transition-colors cursor-pointer"
+            >
+              Review registrations →
+            </button>
+          </div>
+        )}
+
+        {pendingWithdrawalsCount > 0 && (
+          <div className="bg-black/30 border border-red-500/10 rounded-lg p-3 flex flex-col justify-between">
+            <div>
+              <p className="text-xs font-bold text-white mb-1">{pendingWithdrawalsCount} Pending Withdrawal{pendingWithdrawalsCount > 1 ? "s" : ""}</p>
+              <p className="text-[11px] text-gray-400 font-mono">Payout requests are waiting for authorization.</p>
+            </div>
+            <button
+              onClick={() => onTabChange("withdrawals")}
+              className="mt-3 text-[10px] text-red-400 font-mono font-bold uppercase tracking-wider text-left hover:text-white transition-colors cursor-pointer"
+            >
+              Process payouts →
+            </button>
+          </div>
+        )}
+
+        {urgentProjects.length > 0 && (
+          <div className="bg-black/30 border border-red-500/10 rounded-lg p-3 flex flex-col justify-between">
+            <div>
+              <p className="text-xs font-bold text-white mb-1">{urgentProjects.length} Urgent / Overdue Project{urgentProjects.length > 1 ? "s" : ""}</p>
+              <div className="max-h-[60px] overflow-y-auto space-y-1 mt-1 pr-1">
+                {urgentProjects.map((p) => {
+                  const isOverdue = new Date(p.deadline) < new Date();
+                  return (
+                    <button
+                      key={p._id}
+                      onClick={() => onViewProject(p)}
+                      className="block w-full text-left text-[10px] font-mono hover:text-red-400 transition-colors truncate cursor-pointer"
+                    >
+                      <span className={isOverdue ? "text-red-500 font-bold" : "text-yellow-500 font-bold"}>
+                        {isOverdue ? "[OVERDUE]" : "[URGENT]"}
+                      </span>{" "}
+                      <span className="text-gray-300">{p.title}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <button
+              onClick={() => onTabChange("projects")}
+              className="mt-3 text-[10px] text-red-400 font-mono font-bold uppercase tracking-wider text-left hover:text-white transition-colors cursor-pointer"
+            >
+              View active projects →
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Direct Assign Modal Component ───────────────────────────────────────────
+function DirectAssignModal({ members, onConfirm, onClose }) {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [revenue, setRevenue] = useState("");
+  const [memberPercentage, setMemberPercentage] = useState("50");
+  const [deadline, setDeadline] = useState("");
+  const [assignedMemberId, setAssignedMemberId] = useState("");
+  const [pdfFile, setPdfFile] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+
+  const approvedMembers = members.filter((m) => m.status === "approved");
+
+  useEffect(() => {
+    if (approvedMembers.length > 0 && !assignedMemberId) {
+      setAssignedMemberId(approvedMembers[0]._id);
+    }
+  }, [approvedMembers, assignedMemberId]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!title || !description || !revenue || !deadline || !assignedMemberId) {
+      setErr("All fields except PDF proposal are required.");
+      return;
+    }
+    const numRevenue = Number(revenue);
+    if (isNaN(numRevenue) || numRevenue <= 0) {
+      setErr("Revenue must be a positive number.");
+      return;
+    }
+    const numPct = Number(memberPercentage);
+    if (isNaN(numPct) || numPct < 0 || numPct > 100) {
+      setErr("Member percentage cut must be between 0 and 100.");
+      return;
+    }
+
+    setLoading(true);
+    setErr("");
+    try {
+      await onConfirm({
+        title,
+        description,
+        revenue: numRevenue,
+        memberPercentage: numPct,
+        deadline,
+        assignedMemberId,
+        pdfFile
+      });
+    } catch (error) {
+      setErr(error.message || "Failed to assign project.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <ModalOverlay onClose={onClose}>
+      <h3 className="text-xl font-black text-white mb-1">Direct Assign Project</h3>
+      <p className="text-gray-400 text-xs mb-6">Create and assign a pre-approved, active project directly to a member.</p>
+      
+      {err && <p className="p-2 mb-4 bg-red-500/10 border border-red-500/20 text-red-400 text-xs rounded font-mono">✗ {err}</p>}
+      
+      <form onSubmit={handleSubmit} className="space-y-3.5 max-h-[70vh] overflow-y-auto pr-1">
+        <div>
+          <label className="block text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest mb-1">Project Title</label>
+          <input type="text" className="input-emerald py-2 text-sm" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Website Redesign" required />
+        </div>
+
+        <div>
+          <label className="block text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest mb-1">Description</label>
+          <textarea rows="3" className="input-emerald py-2 text-sm" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief project scope and instructions..." required />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest mb-1">Total Revenue ($)</label>
+            <input type="number" min="1" step="0.01" className="input-emerald py-2 text-sm" value={revenue} onChange={(e) => setRevenue(e.target.value)} placeholder="1500" required />
+          </div>
+          <div>
+            <label className="block text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest mb-1">Member Share (%)</label>
+            <input type="number" min="0" max="100" className="input-emerald py-2 text-sm" value={memberPercentage} onChange={(e) => setMemberPercentage(e.target.value)} placeholder="50" required />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest mb-1">Deadline</label>
+            <input type="date" className="input-emerald py-2 text-sm" value={deadline} onChange={(e) => setDeadline(e.target.value)} required />
+          </div>
+          <div>
+            <label className="block text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest mb-1">Assign Member</label>
+            {approvedMembers.length === 0 ? (
+              <p className="text-red-400 text-xs py-2">No approved members found.</p>
+            ) : (
+              <select
+                className="input-emerald py-2 text-sm bg-[#05070a] border-emerald-500/15"
+                value={assignedMemberId}
+                onChange={(e) => setAssignedMemberId(e.target.value)}
+                required
+              >
+                {approvedMembers.map((m) => (
+                  <option key={m._id} value={m._id}>
+                    {m.fullName}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest mb-1">Proposal Document (PDF - Optional)</label>
+          <input
+            type="file"
+            accept="application/pdf"
+            onChange={(e) => setPdfFile(e.target.files[0])}
+            className="input-emerald py-2 text-sm file:mr-4 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-bold file:bg-emerald-500/10 file:text-emerald-400 cursor-pointer"
+          />
+        </div>
+
+        <div className="flex gap-3 pt-3">
+          <button type="button" onClick={onClose} className="btn-outline-emerald flex-1 py-2 text-xs">Cancel</button>
+          <button
+            type="submit"
+            disabled={loading || approvedMembers.length === 0}
+            className="btn-emerald flex-1 py-2 text-xs disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            {loading ? "Assigning..." : "Assign & Activate →"}
+          </button>
+        </div>
+      </form>
+    </ModalOverlay>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function AdminDashboard() {
@@ -530,6 +754,17 @@ export default function AdminDashboard() {
   const [confirmCompleteModal, setConfirmCompleteModal] = useState(null);
   const [detailPanel, setDetailPanel] = useState(null);
   const [showAdminWithdrawModal, setShowAdminWithdrawModal] = useState(false);
+  const [showDirectAssignModal, setShowDirectAssignModal] = useState(false);
+
+  // Search & Filters State
+  const [memberSearch, setMemberSearch] = useState("");
+  const [memberFilter, setMemberFilter] = useState("all");
+
+  const [projectSearch, setProjectSearch] = useState("");
+  const [projectFilter, setProjectFilter] = useState("all");
+
+  const [withdrawalSearch, setWithdrawalSearch] = useState("");
+  const [withdrawalFilter, setWithdrawalFilter] = useState("all");
 
   // Track which projects have already triggered a deadline notification this session
   const notifiedRef = useRef(new Set());
@@ -774,6 +1009,88 @@ export default function AdminDashboard() {
     } catch { toast.error("Failed to reject withdrawal."); setRejectWithdrawalModal(null); }
   };
 
+  // Direct Assign project callback
+  const handleDirectAssignProject = async (projectData) => {
+    try {
+      const formDataToSend = new FormData();
+      formDataToSend.append("title", projectData.title);
+      formDataToSend.append("description", projectData.description);
+      formDataToSend.append("revenue", projectData.revenue);
+      formDataToSend.append("memberPercentage", projectData.memberPercentage);
+      formDataToSend.append("deadline", projectData.deadline);
+      formDataToSend.append("assignedMemberId", projectData.assignedMemberId);
+      if (projectData.pdfFile) {
+        formDataToSend.append("pdf", projectData.pdfFile);
+      }
+
+      await axiosInstance.post("/projects", formDataToSend, {
+        headers: { "Content-Type": "multipart/form-data" }
+      });
+
+      setShowDirectAssignModal(false);
+      toast.success("Project assigned and activated.");
+      fetchData();
+    } catch (err) {
+      const errMsg = err.response?.data?.message || "Failed to assign project.";
+      toast.error(errMsg);
+      throw new Error(errMsg);
+    }
+  };
+
+  // Export financial history to CSV format
+  const handleExportFinancials = () => {
+    const rows = [
+      ["Type", "Date", "Reference/Member", "Total Revenue ($)", "Agency Cut (%)", "Agency Profit ($)", "Status", "Note"]
+    ];
+
+    // Add completed projects
+    projects.filter((p) => p.status === "completed").forEach((p) => {
+      const date = new Date(p.updatedAt).toLocaleDateString();
+      const member = p.createdBy?.fullName || "Unknown Member";
+      const agencyCutPercent = 100 - p.memberPercentage;
+      const profit = p.revenue * (agencyCutPercent / 100);
+      rows.push([
+        "Project Profit",
+        date,
+        `${p.title} (Member: ${member})`,
+        p.revenue.toString(),
+        `${agencyCutPercent}%`,
+        profit.toFixed(2),
+        "Completed",
+        ""
+      ]);
+    });
+
+    // Add withdrawals
+    adminWithdrawals.filter(w => w.status === "approved").forEach((w) => {
+      const date = new Date(w.createdAt).toLocaleDateString();
+      rows.push([
+        "Withdrawal",
+        date,
+        "Admin Wallet",
+        "0",
+        "0%",
+        `-${w.amount.toFixed(2)}`,
+        "Approved",
+        w.note || ""
+      ]);
+    });
+
+    // Create CSV content
+    const csvContent = rows.map(e => e.map(val => `"${val.replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `agency_financials_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    toast.success("Financial ledger exported.");
+  };
+
   if (authLoading || (authUser && loading)) return (
     <div className="flex min-h-[60vh] items-center justify-center">
       <div className="w-8 h-8 border-4 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin"></div>
@@ -808,6 +1125,13 @@ export default function AdminDashboard() {
         />
       )}
       {showAdminWithdrawModal && <AdminWithdrawModal balance={adminBalance} onConfirm={handleAdminWithdraw} onClose={() => setShowAdminWithdrawModal(false)} />}
+      {showDirectAssignModal && (
+        <DirectAssignModal
+          members={allMembers}
+          onConfirm={handleDirectAssignProject}
+          onClose={() => setShowDirectAssignModal(false)}
+        />
+      )}
       {detailPanel && (
         <ProjectDetailPanel
           project={detailPanel}
@@ -832,6 +1156,18 @@ export default function AdminDashboard() {
             <button onClick={() => setError(null)} className="ml-4 font-bold">✕</button>
           </div>
         )}
+
+        <AdminAlertCenter
+          pendingUsersCount={users.length}
+          pendingWithdrawalsCount={pendingWithdrawals.length}
+          urgentProjects={projects.filter((p) => {
+            if (p.status !== "active") return false;
+            const timeLeft = new Date(p.deadline) - new Date();
+            return timeLeft <= 2 * 24 * 60 * 60 * 1000;
+          })}
+          onTabChange={setActiveTab}
+          onViewProject={setDetailPanel}
+        />
 
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -895,15 +1231,22 @@ export default function AdminDashboard() {
                       {users.map((user) => (
                         <tr key={user._id} className="hover:bg-white/[0.02] transition-colors">
                           <td className="px-8 py-4">
-                            <div className="font-semibold text-white">{user.fullName}</div>
-                            <div className="text-xs text-emerald-500/70 uppercase tracking-wider mt-1">{user.role}</div>
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-400 font-black text-sm flex-shrink-0">
+                                {user.fullName.charAt(0).toUpperCase()}
+                              </div>
+                              <div>
+                                <div className="font-semibold text-white">{user.fullName}</div>
+                                <div className="text-xs text-gray-500">{user.role}</div>
+                              </div>
+                            </div>
                           </td>
-                          <td className="px-8 py-4 text-gray-300">{user.email}</td>
+                          <td className="px-8 py-4 text-gray-300 text-sm">{user.email}</td>
                           <td className="px-8 py-4 text-gray-400 text-sm">{new Date(user.createdAt).toLocaleDateString()}</td>
                           <td className="px-8 py-4 text-right">
-                            <div className="flex justify-end gap-3">
-                              <button onClick={() => handleRejectUser(user._id)} className="px-4 py-2 text-sm font-medium text-red-400 hover:text-white hover:bg-red-500/20 rounded-lg transition-colors">Reject</button>
-                              <button onClick={() => handleApproveUser(user._id)} className="btn-emerald px-6 py-2 text-sm">Approve</button>
+                            <div className="flex justify-end gap-2">
+                              <button onClick={() => handleRejectUser(user._id)} className="px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/20 rounded transition-colors cursor-pointer">Reject</button>
+                              <button onClick={() => handleApproveUser(user._id)} className="btn-emerald px-4 py-1.5 text-xs cursor-pointer">Approve</button>
                             </div>
                           </td>
                         </tr>
@@ -916,251 +1259,355 @@ export default function AdminDashboard() {
           )}
 
           {/* ── MEMBERS TAB ── */}
-          {activeTab === "members" && (
-            <>
-              <div className="px-8 py-5 border-b border-white/5 bg-black/20">
-                <h2 className="text-lg font-semibold text-white">All Members</h2>
-              </div>
-              {allMembers.length === 0 ? (
-                <div className="p-16 text-center text-gray-500">No members yet.</div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="border-b border-white/5 text-sm text-gray-400 uppercase tracking-wider">
-                        <th className="px-8 py-4 font-medium">Member</th>
-                        <th className="px-8 py-4 font-medium">Email</th>
-                        <th className="px-8 py-4 font-medium">Balance</th>
-                        <th className="px-8 py-4 font-medium">Joined</th>
-                        <th className="px-8 py-4 font-medium">Status</th>
-                        <th className="px-8 py-4 font-medium text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/5">
-                      {allMembers.map((member) => (
-                        <tr key={member._id} className="hover:bg-white/[0.02] transition-colors">
-                          <td className="px-8 py-4">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-400 font-black text-sm flex-shrink-0">
-                                {member.fullName.charAt(0).toUpperCase()}
-                              </div>
-                              <div>
-                                <div className="font-semibold text-white">{member.fullName}</div>
-                                <div className="text-xs text-gray-500 uppercase tracking-wider">{member.role}</div>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-8 py-4 text-gray-300 text-sm">{member.email}</td>
-                          <td className="px-8 py-4">
-                            <span className={`font-mono font-bold text-sm ${member.balance > 0 ? "text-emerald-400" : "text-gray-500"}`}>
-                              ${(member.balance ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </span>
-                          </td>
-                          <td className="px-8 py-4 text-gray-400 text-sm">{new Date(member.createdAt).toLocaleDateString()}</td>
-                          <td className="px-8 py-4">
-                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
-                              member.status === "approved" ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/30" :
-                              member.status === "pending"  ? "text-yellow-400 bg-yellow-500/10 border-yellow-500/30" :
-                              "text-red-400 bg-red-500/10 border-red-500/30"
-                            }`}>
-                              {member.status === "rejected" ? "deactivated" : member.status}
-                            </span>
-                          </td>
-                          <td className="px-8 py-4 text-right">
-                            {member.status !== "pending" && (
-                              <button
-                                onClick={() => handleDeactivateUser(member._id)}
-                                className={`px-4 py-1.5 text-xs font-semibold rounded transition-colors border ${
-                                  member.status === "approved"
-                                    ? "text-red-400 border-red-500/30 hover:bg-red-500/10"
-                                    : "text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10"
-                                }`}
-                              >
-                                {member.status === "approved" ? "Deactivate" : "Reactivate"}
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+          {activeTab === "members" && (() => {
+            const filteredMembers = allMembers.filter((m) => {
+              const matchesSearch =
+                m.fullName.toLowerCase().includes(memberSearch.toLowerCase()) ||
+                m.email.toLowerCase().includes(memberSearch.toLowerCase());
+              const matchesStatus =
+                memberFilter === "all" ||
+                (memberFilter === "approved" && m.status === "approved") ||
+                (memberFilter === "rejected" && m.status === "rejected") ||
+                (memberFilter === "pending" && m.status === "pending");
+              return matchesSearch && matchesStatus;
+            });
+
+            return (
+              <>
+                <div className="px-8 py-5 border-b border-white/5 bg-black/20 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <h2 className="text-lg font-semibold text-white">All Members</h2>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <input
+                      type="text"
+                      placeholder="Search member..."
+                      value={memberSearch}
+                      onChange={(e) => setMemberSearch(e.target.value)}
+                      className="input-emerald py-1.5 px-3 max-w-[200px] text-xs font-mono"
+                    />
+                    <select
+                      value={memberFilter}
+                      onChange={(e) => setMemberFilter(e.target.value)}
+                      className="input-emerald py-1.5 px-3 max-w-[140px] text-xs font-mono bg-[#05070a] border-emerald-500/15"
+                    >
+                      <option value="all">All Statuses</option>
+                      <option value="approved">Approved</option>
+                      <option value="rejected">Deactivated</option>
+                      <option value="pending">Pending</option>
+                    </select>
+                  </div>
                 </div>
-              )}
-            </>
-          )}
+                {filteredMembers.length === 0 ? (
+                  <div className="p-16 text-center text-gray-500">No members found matching criteria.</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-white/5 text-sm text-gray-400 uppercase tracking-wider">
+                          <th className="px-8 py-4 font-medium">Member</th>
+                          <th className="px-8 py-4 font-medium">Email</th>
+                          <th className="px-8 py-4 font-medium">Balance</th>
+                          <th className="px-8 py-4 font-medium">Joined</th>
+                          <th className="px-8 py-4 font-medium">Status</th>
+                          <th className="px-8 py-4 font-medium text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {filteredMembers.map((member) => (
+                          <tr key={member._id} className="hover:bg-white/[0.02] transition-colors">
+                            <td className="px-8 py-4">
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-400 font-black text-sm flex-shrink-0">
+                                  {member.fullName.charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                  <div className="font-semibold text-white">{member.fullName}</div>
+                                  <div className="text-xs text-gray-500 uppercase tracking-wider">{member.role}</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-8 py-4 text-gray-300 text-sm">{member.email}</td>
+                            <td className="px-8 py-4">
+                              <span className={`font-mono font-bold text-sm ${member.balance > 0 ? "text-emerald-400" : "text-gray-500"}`}>
+                                ${(member.balance ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                            </td>
+                            <td className="px-8 py-4 text-gray-400 text-sm">{new Date(member.createdAt).toLocaleDateString()}</td>
+                            <td className="px-8 py-4">
+                              <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
+                                  member.status === "approved" ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/30" :
+                                  member.status === "pending"  ? "text-yellow-400 bg-yellow-500/10 border-yellow-500/30" :
+                                  "text-red-400 bg-red-500/10 border-red-500/30"
+                              }`}>
+                                {member.status === "rejected" ? "deactivated" : member.status}
+                              </span>
+                            </td>
+                            <td className="px-8 py-4 text-right">
+                              {member.status !== "pending" && (
+                                <button
+                                  onClick={() => handleDeactivateUser(member._id)}
+                                  className={`px-4 py-1.5 text-xs font-semibold rounded transition-colors border ${
+                                    member.status === "approved"
+                                      ? "text-red-400 border-red-500/30 hover:bg-red-500/10"
+                                      : "text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10"
+                                  }`}
+                                >
+                                  {member.status === "approved" ? "Deactivate" : "Reactivate"}
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            );
+          })()}
 
           {/* ── PROJECTS TAB ── */}
-          {activeTab === "projects" && (
-            <>
-              <div className="px-8 py-5 border-b border-white/5 bg-black/20">
-                <h2 className="text-lg font-semibold text-white">Project Management</h2>
-              </div>
-              {projects.length === 0 ? (
-                <div className="p-16 text-center text-gray-500">No projects submitted yet.</div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="border-b border-white/5 text-sm text-gray-400 uppercase tracking-wider">
-                        <th className="px-8 py-4 font-medium">Project</th>
-                        <th className="px-8 py-4 font-medium">Member</th>
-                        <th className="px-8 py-4 font-medium">Financials</th>
-                        <th className="px-8 py-4 font-medium">Deadline</th>
-                        <th className="px-8 py-4 font-medium">Status</th>
-                        <th className="px-8 py-4 font-medium text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/5">
-                      {projects.map((project) => (
-                        <tr key={project._id} className="hover:bg-white/[0.02] transition-colors">
-                          <td className="px-8 py-4">
-                            <button
-                              onClick={() => setDetailPanel(project)}
-                              className="font-semibold text-white hover:text-emerald-400 transition-colors text-left"
-                            >
-                              {project.title}
-                            </button>
-                            <div className="text-xs text-gray-500 mt-1 line-clamp-1 max-w-[200px]">{project.description}</div>
-                            {project.pdfUrl && (
-                              <button
-                                onClick={async () => handleLoadPdf(project.pdfUrl)}
-                                className="text-emerald-400 text-xs mt-2 inline-block hover:underline bg-transparent border-none cursor-pointer p-0"
-                              >View PDF</button>
-                            )}
-                          </td>
-                          <td className="px-8 py-4">
-                            <div className="text-gray-300 font-medium">{project.createdBy.fullName}</div>
-                            <div className="text-xs text-gray-500">{project.createdBy.email}</div>
-                          </td>
-                          <td className="px-8 py-4">
-                            <div className="text-white">${project.revenue.toLocaleString()}</div>
-                            <div className="text-xs text-emerald-400 mt-1">{project.memberPercentage}% member share</div>
-                          </td>
-                          <td className="px-8 py-4">
-                            <DeadlineCountdown deadline={project.deadline} status={project.status} variant="table" />
-                          </td>
-                          <td className="px-8 py-4">
-                            <span className={`px-2 py-1 rounded text-xs font-bold uppercase tracking-wider ${
-                              project.status === "active" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" :
-                              project.status === "completed" ? "bg-blue-500/10 text-blue-400 border border-blue-500/20" :
-                              project.status === "rejected" ? "bg-red-500/10 text-red-400 border border-red-500/20" :
-                              "bg-yellow-500/10 text-yellow-400 border border-yellow-500/20"
-                            }`}>
-                              {project.status.replace("_", " ")}
-                            </span>
-                            {project.extensionRequest?.status === "pending" && (
-                              <div className="mt-3 p-2 bg-yellow-500/10 border border-yellow-500/30 rounded text-xs">
-                                <span className="text-yellow-400 font-bold block mb-1">Extension Requested!</span>
-                                <span className="text-gray-400 block">Waiting for member to approve.</span>
-                              </div>
-                            )}
-                            {project.status === "rejected" && project.rejectionNote && (
-                              <div className="mt-2 p-2 bg-red-500/8 border border-red-500/20 rounded text-xs">
-                                <span className="text-red-400 font-bold block mb-0.5">Reason:</span>
-                                <span className="text-gray-400">{project.rejectionNote}</span>
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-8 py-4 text-right">
-                            <div className="flex justify-end gap-2 flex-col items-end">
+          {activeTab === "projects" && (() => {
+            const filteredProjects = projects.filter((p) => {
+              const matchesSearch =
+                p.title.toLowerCase().includes(projectSearch.toLowerCase()) ||
+                p.description.toLowerCase().includes(projectSearch.toLowerCase()) ||
+                (p.createdBy?.fullName || "").toLowerCase().includes(projectSearch.toLowerCase()) ||
+                (p.createdBy?.email || "").toLowerCase().includes(projectSearch.toLowerCase());
+              const matchesStatus =
+                projectFilter === "all" || p.status === projectFilter;
+              return matchesSearch && matchesStatus;
+            });
+
+            return (
+              <>
+                <div className="px-8 py-5 border-b border-white/5 bg-black/20 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <h2 className="text-lg font-semibold text-white">Project Management</h2>
+                    <button
+                      onClick={() => setShowDirectAssignModal(true)}
+                      className="btn-emerald py-1.5 px-3 text-[10px] tracking-wider font-bold cursor-pointer"
+                    >
+                      + Assign Project
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <input
+                      type="text"
+                      placeholder="Search projects..."
+                      value={projectSearch}
+                      onChange={(e) => setProjectSearch(e.target.value)}
+                      className="input-emerald py-1.5 px-3 max-w-[200px] text-xs font-mono"
+                    />
+                    <select
+                      value={projectFilter}
+                      onChange={(e) => setProjectFilter(e.target.value)}
+                      className="input-emerald py-1.5 px-3 max-w-[140px] text-xs font-mono bg-[#05070a] border-emerald-500/15"
+                    >
+                      <option value="all">All Statuses</option>
+                      <option value="pending_approval">Pending Approval</option>
+                      <option value="active">Active</option>
+                      <option value="completed">Completed</option>
+                      <option value="rejected">Rejected</option>
+                    </select>
+                  </div>
+                </div>
+                {filteredProjects.length === 0 ? (
+                  <div className="p-16 text-center text-gray-500">No projects found matching criteria.</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-white/5 text-sm text-gray-400 uppercase tracking-wider">
+                          <th className="px-8 py-4 font-medium">Project</th>
+                          <th className="px-8 py-4 font-medium">Member</th>
+                          <th className="px-8 py-4 font-medium">Financials</th>
+                          <th className="px-8 py-4 font-medium">Deadline</th>
+                          <th className="px-8 py-4 font-medium">Status</th>
+                          <th className="px-8 py-4 font-medium text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {filteredProjects.map((project) => (
+                          <tr key={project._id} className="hover:bg-white/[0.02] transition-colors">
+                            <td className="px-8 py-4">
                               <button
                                 onClick={() => setDetailPanel(project)}
-                                className="px-4 py-1.5 text-xs text-gray-400 border border-white/10 rounded hover:bg-white/5 hover:text-white transition-colors w-full max-w-[130px]"
+                                className="font-semibold text-white hover:text-emerald-400 transition-colors text-left cursor-pointer"
                               >
-                                View Details
+                                {project.title}
                               </button>
-                              {project.status === "pending_approval" && (
-                                <div className="flex gap-2 w-full max-w-[130px]">
-                                  <button onClick={() => setRejectProjectModal(project)} className="flex-1 py-1.5 text-xs text-red-400 hover:bg-red-500/20 rounded transition-colors border border-red-500/20">Reject</button>
-                                  <button onClick={() => setApproveModal(project)} className="flex-1 btn-emerald py-1.5 text-xs">Approve</button>
+                              <div className="text-xs text-gray-500 mt-1 line-clamp-1 max-w-[200px]">{project.description}</div>
+                              {project.pdfUrl && (
+                                <button
+                                  onClick={async () => handleLoadPdf(project.pdfUrl)}
+                                  className="text-emerald-400 text-xs mt-2 inline-block hover:underline bg-transparent border-none cursor-pointer p-0"
+                                >View PDF</button>
+                              )}
+                            </td>
+                            <td className="px-8 py-4">
+                              <div className="text-gray-300 font-medium">{project.createdBy?.fullName || "Unknown"}</div>
+                              <div className="text-xs text-gray-500">{project.createdBy?.email || ""}</div>
+                            </td>
+                            <td className="px-8 py-4">
+                              <div className="text-white font-mono">${project.revenue.toLocaleString()}</div>
+                              <div className="text-xs text-emerald-400 mt-1">{project.memberPercentage}% member share</div>
+                            </td>
+                            <td className="px-8 py-4">
+                              <DeadlineCountdown deadline={project.deadline} status={project.status} variant="table" />
+                            </td>
+                            <td className="px-8 py-4">
+                              <span className={`px-2 py-1 rounded text-xs font-bold uppercase tracking-wider ${
+                                project.status === "active" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" :
+                                project.status === "completed" ? "bg-blue-500/10 text-blue-400 border border-blue-500/20" :
+                                project.status === "rejected" ? "bg-red-500/10 text-red-400 border border-red-500/20" :
+                                "bg-yellow-500/10 text-yellow-400 border border-yellow-500/20"
+                              }`}>
+                                {project.status.replace("_", " ")}
+                              </span>
+                              {project.extensionRequest?.status === "pending" && (
+                                <div className="mt-3 p-2 bg-yellow-500/10 border border-yellow-500/30 rounded text-xs">
+                                  <span className="text-yellow-400 font-bold block mb-1">Extension Requested!</span>
+                                  <span className="text-gray-400 block">Waiting for member to approve.</span>
                                 </div>
                               )}
-                              {project.status === "active" && (
-                                <>
-                                  <button onClick={() => setConfirmCompleteModal(project._id)} className="px-4 py-1.5 text-xs font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded hover:bg-blue-500/30 transition-colors w-full max-w-[130px]">
-                                    Mark Completed
-                                  </button>
-                                  {project.extensionRequest?.status !== "pending" && (
-                                    <button onClick={() => setExtensionModal(project)} className="px-4 py-1.5 text-xs text-yellow-400 border border-yellow-500/30 rounded hover:bg-yellow-500/10 transition-colors w-full max-w-[130px]">
-                                      Extend Deadline
-                                    </button>
-                                  )}
-                                </>
+                              {project.status === "rejected" && project.rejectionNote && (
+                                <div className="mt-2 p-2 bg-red-500/8 border border-red-500/20 rounded text-xs">
+                                  <span className="text-red-400 font-bold block mb-0.5">Reason:</span>
+                                  <span className="text-gray-400">{project.rejectionNote}</span>
+                                </div>
                               )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </>
-          )}
+                            </td>
+                            <td className="px-8 py-4 text-right">
+                              <div className="flex justify-end gap-2 flex-col items-end">
+                                <button
+                                  onClick={() => setDetailPanel(project)}
+                                  className="px-4 py-1.5 text-xs text-gray-400 border border-white/10 rounded hover:bg-white/5 hover:text-white transition-colors w-full max-w-[130px] cursor-pointer"
+                                >
+                                  View Details
+                                </button>
+                                {project.status === "pending_approval" && (
+                                  <div className="flex gap-2 w-full max-w-[130px]">
+                                    <button onClick={() => setRejectProjectModal(project)} className="flex-1 py-1.5 text-xs text-red-400 hover:bg-red-500/20 rounded transition-colors border border-red-500/20 cursor-pointer">Reject</button>
+                                    <button onClick={() => setApproveModal(project)} className="flex-1 btn-emerald py-1.5 text-xs cursor-pointer">Approve</button>
+                                  </div>
+                                )}
+                                {project.status === "active" && (
+                                  <>
+                                    <button onClick={() => setConfirmCompleteModal(project._id)} className="px-4 py-1.5 text-xs font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded hover:bg-blue-500/30 transition-colors w-full max-w-[130px] cursor-pointer">
+                                      Mark Completed
+                                    </button>
+                                    {project.extensionRequest?.status !== "pending" && (
+                                      <button onClick={() => setExtensionModal(project)} className="px-4 py-1.5 text-xs text-yellow-400 border border-yellow-500/30 rounded hover:bg-yellow-500/10 transition-colors w-full max-w-[130px] cursor-pointer">
+                                        Extend Deadline
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            );
+          })()}
 
           {/* ── WITHDRAWALS TAB ── */}
-          {activeTab === "withdrawals" && (
-            <>
-              {/* ── Member Withdrawal Requests ── */}
-              <div className="px-8 py-5 border-b border-white/5 bg-black/20">
-                <h2 className="text-lg font-semibold text-white">Member Withdrawal Requests</h2>
-              </div>
-              {withdrawals.length === 0 ? (
-                <div className="p-16 text-center text-gray-500">No withdrawal requests yet.</div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="border-b border-white/5 text-sm text-gray-400 uppercase tracking-wider">
-                        <th className="px-8 py-4 font-medium">Member</th>
-                        <th className="px-8 py-4 font-medium">Amount</th>
-                        <th className="px-8 py-4 font-medium">Note / Payment Info</th>
-                        <th className="px-8 py-4 font-medium">Date</th>
-                        <th className="px-8 py-4 font-medium">Status</th>
-                        <th className="px-8 py-4 font-medium text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/5">
-                      {withdrawals.map((w) => (
-                        <tr key={w._id} className="hover:bg-white/[0.02] transition-colors">
-                          <td className="px-8 py-4">
-                            <div className="text-white font-semibold">{w.user?.fullName}</div>
-                            <div className="text-xs text-gray-500">{w.user?.email}</div>
-                            <div className="text-xs text-emerald-400 mt-1">Balance: ${w.user?.balance?.toFixed(2)}</div>
-                          </td>
-                          <td className="px-8 py-4">
-                            <span className="text-white font-bold text-lg">${w.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                          </td>
-                          <td className="px-8 py-4 text-gray-400 text-sm max-w-[200px]">
-                            {w.note || <span className="text-gray-600 italic">No note</span>}
-                            {w.adminNote && <p className="text-red-400 text-xs mt-1">Rejection reason: {w.adminNote}</p>}
-                          </td>
-                          <td className="px-8 py-4 text-gray-400 text-sm">{new Date(w.createdAt).toLocaleDateString()}</td>
-                          <td className="px-8 py-4">
-                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
-                              w.status === "approved" ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/30" :
-                              w.status === "rejected" ? "text-red-400 bg-red-500/10 border-red-500/30" :
-                              "text-yellow-400 bg-yellow-500/10 border-yellow-500/30"
-                            }`}>
-                              {w.status}
-                            </span>
-                          </td>
-                          <td className="px-8 py-4 text-right">
-                            {w.status === "pending" && (
-                              <div className="flex justify-end gap-2">
-                                <button onClick={() => setRejectWithdrawalModal(w)} className="px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/20 rounded transition-colors">Reject</button>
-                                <button onClick={() => handleApproveWithdrawal(w._id)} className="btn-emerald px-4 py-1.5 text-xs">Approve</button>
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+          {activeTab === "withdrawals" && (() => {
+            const filteredWithdrawals = withdrawals.filter((w) => {
+              const matchesSearch =
+                (w.user?.fullName || "").toLowerCase().includes(withdrawalSearch.toLowerCase()) ||
+                (w.user?.email || "").toLowerCase().includes(withdrawalSearch.toLowerCase());
+              const matchesStatus =
+                withdrawalFilter === "all" || w.status === withdrawalFilter;
+              return matchesSearch && matchesStatus;
+            });
+
+            return (
+              <>
+                {/* ── Member Withdrawal Requests ── */}
+                <div className="px-8 py-5 border-b border-white/5 bg-black/20 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <h2 className="text-lg font-semibold text-white">Member Withdrawal Requests</h2>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <input
+                      type="text"
+                      placeholder="Search member name..."
+                      value={withdrawalSearch}
+                      onChange={(e) => setWithdrawalSearch(e.target.value)}
+                      className="input-emerald py-1.5 px-3 max-w-[200px] text-xs font-mono"
+                    />
+                    <select
+                      value={withdrawalFilter}
+                      onChange={(e) => setWithdrawalFilter(e.target.value)}
+                      className="input-emerald py-1.5 px-3 max-w-[130px] text-xs font-mono bg-[#05070a] border-emerald-500/15"
+                    >
+                      <option value="all">All Statuses</option>
+                      <option value="pending">Pending</option>
+                      <option value="approved">Approved</option>
+                      <option value="rejected">Rejected</option>
+                    </select>
+                  </div>
                 </div>
-              )}
-            </>
-          )}
+                {filteredWithdrawals.length === 0 ? (
+                  <div className="p-16 text-center text-gray-500">No withdrawal requests found matching criteria.</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-white/5 text-sm text-gray-400 uppercase tracking-wider">
+                          <th className="px-8 py-4 font-medium">Member</th>
+                          <th className="px-8 py-4 font-medium">Amount</th>
+                          <th className="px-8 py-4 font-medium">Note / Payment Info</th>
+                          <th className="px-8 py-4 font-medium">Date</th>
+                          <th className="px-8 py-4 font-medium">Status</th>
+                          <th className="px-8 py-4 font-medium text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {filteredWithdrawals.map((w) => (
+                          <tr key={w._id} className="hover:bg-white/[0.02] transition-colors">
+                            <td className="px-8 py-4">
+                              <div className="text-white font-semibold">{w.user?.fullName}</div>
+                              <div className="text-xs text-gray-500">{w.user?.email}</div>
+                              <div className="text-xs text-emerald-400 mt-1">Balance: ${w.user?.balance?.toFixed(2)}</div>
+                            </td>
+                            <td className="px-8 py-4">
+                              <span className="text-white font-bold text-lg font-mono">${w.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            </td>
+                            <td className="px-8 py-4 text-gray-400 text-sm max-w-[200px]">
+                              {w.note || <span className="text-gray-600 italic">No note</span>}
+                              {w.adminNote && <p className="text-red-400 text-xs mt-1">Rejection reason: {w.adminNote}</p>}
+                            </td>
+                            <td className="px-8 py-4 text-gray-400 text-sm">{new Date(w.createdAt).toLocaleDateString()}</td>
+                            <td className="px-8 py-4">
+                              <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
+                                w.status === "approved" ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/30" :
+                                w.status === "rejected" ? "text-red-400 bg-red-500/10 border-red-500/30" :
+                                "text-yellow-400 bg-yellow-500/10 border-yellow-500/30"
+                              }`}>
+                                {w.status}
+                              </span>
+                            </td>
+                            <td className="px-8 py-4 text-right">
+                              {w.status === "pending" && (
+                                <div className="flex justify-end gap-2">
+                                  <button onClick={() => setRejectWithdrawalModal(w)} className="px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/20 rounded transition-colors cursor-pointer">Reject</button>
+                                  <button onClick={() => handleApproveWithdrawal(w._id)} className="btn-emerald px-4 py-1.5 text-xs cursor-pointer">Approve</button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            );
+          })()}
 
           {/* ── FINANCE TAB ── */}
           {activeTab === "finance" && (() => {
@@ -1177,21 +1624,21 @@ export default function AdminDashboard() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
                     <div className="glass-panel p-6 border-l-4 border-emerald-500">
                       <p className="text-gray-400 text-xs font-medium uppercase tracking-widest mb-2">Total Earned</p>
-                      <p className="text-3xl font-black text-white">
+                      <p className="text-3xl font-black text-white font-mono">
                         ${totalEarned.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </p>
                       <p className="text-gray-600 text-xs mt-1">from {projects.filter(p => p.status === "completed").length} completed projects</p>
                     </div>
                     <div className="glass-panel p-6 border-l-4 border-red-500">
                       <p className="text-gray-400 text-xs font-medium uppercase tracking-widest mb-2">Total Withdrawn</p>
-                      <p className="text-3xl font-black text-white">
+                      <p className="text-3xl font-black text-white font-mono">
                         ${totalWithdrawnAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </p>
                       <p className="text-gray-600 text-xs mt-1">across {adminWithdrawals.filter(w => w.status === "approved").length} withdrawals</p>
                     </div>
                     <div className="glass-panel p-6 border-l-4 border-blue-500">
                       <p className="text-gray-400 text-xs font-medium uppercase tracking-widest mb-2">Current Balance</p>
-                      <p className={`text-3xl font-black ${adminBalance > 0 ? "text-emerald-400" : "text-gray-500"}`}>
+                      <p className={`text-3xl font-black font-mono ${adminBalance > 0 ? "text-emerald-400" : "text-gray-500"}`}>
                         ${adminBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </p>
                       <p className="text-gray-600 text-xs mt-1">available to withdraw</p>
@@ -1202,7 +1649,7 @@ export default function AdminDashboard() {
                   <div className="glass-panel p-5 flex items-center justify-between mb-6">
                     <div>
                       <p className="text-gray-400 text-xs font-medium uppercase tracking-widest mb-1">Pending Revenue</p>
-                      <p className="text-2xl font-black text-yellow-400">
+                      <p className="text-2xl font-black text-yellow-400 font-mono">
                         ${adminPendingEarned.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </p>
                       <p className="text-gray-600 text-xs mt-1">from {projects.filter(p => p.status === "active").length} active projects — not yet available</p>
@@ -1212,14 +1659,25 @@ export default function AdminDashboard() {
                     </div>
                   </div>
 
-                  {/* Withdraw button */}
-                  <button
-                    onClick={() => setShowAdminWithdrawModal(true)}
-                    disabled={adminBalance <= 0}
-                    className="btn-emerald px-10 py-3 text-sm disabled:opacity-30 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none"
-                  >
-                    Withdraw Funds →
-                  </button>
+                  {/* Action buttons */}
+                  <div className="flex flex-wrap gap-4">
+                    <button
+                      onClick={() => setShowAdminWithdrawModal(true)}
+                      disabled={adminBalance <= 0}
+                      className="btn-emerald px-10 py-3 text-sm disabled:opacity-30 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none cursor-pointer"
+                    >
+                      Withdraw Funds →
+                    </button>
+                    <button
+                      onClick={handleExportFinancials}
+                      className="btn-outline-emerald px-8 py-3 text-sm font-bold uppercase tracking-wider font-mono flex items-center gap-2 cursor-pointer"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                      </svg>
+                      Export CSV Report
+                    </button>
+                  </div>
                 </div>
 
                 {/* Withdrawal history */}
